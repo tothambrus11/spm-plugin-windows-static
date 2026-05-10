@@ -101,16 +101,33 @@ jobs:
           Write-Host "`n--- stderr ---"
           Get-Content plugin.stderr.txt -ErrorAction SilentlyContinue
 
-          Write-Host "`n--- dumpbin /dependents ---"
-          $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
-          if ($dumpbin) {
-            & $dumpbin.Source /dependents $exe
-          } else {
-            Write-Host "dumpbin not on PATH; trying llvm-readobj"
-            $readobj = "$env:LOCALAPPDATA\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\llvm-readobj.exe"
-            if (Test-Path $readobj) {
-              & $readobj --coff-imports $exe
+          Write-Host "`n--- Imported DLLs and their resolution on PATH ---"
+          $readobj = "$env:LOCALAPPDATA\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\llvm-readobj.exe"
+          $deps = & $readobj --coff-imports $exe |
+            Select-String -Pattern '^\s*Name:\s+(.+)$' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value.Trim() } |
+            Sort-Object -Unique
+          foreach ($d in $deps) {
+            $resolved = (Get-Command $d -ErrorAction SilentlyContinue)
+            if ($resolved) {
+              Write-Host ("  [FOUND]   {0,-30} -> {1}" -f $d, $resolved.Source)
+            } else {
+              Write-Host ("  [MISSING] {0}" -f $d)
             }
+          }
+
+          Write-Host "`n--- Listing Swift runtime DLL directory ---"
+          $runtimeBin = "$env:LOCALAPPDATA\Programs\Swift\Runtimes\0.0.0\usr\bin"
+          if (Test-Path $runtimeBin) {
+            Get-ChildItem $runtimeBin -Filter *.dll | Format-Table Name,Length
+          } else {
+            Write-Host "Runtime directory not found: $runtimeBin"
+          }
+
+          Write-Host "`n--- Listing SDK redist usr/bin if present ---"
+          $sdkBin = (Split-Path -Path $env:SDKROOT -Parent) + "\..\..\Runtimes\0.0.0\usr\bin"
+          if (Test-Path $sdkBin) {
+            Get-ChildItem $sdkBin -Filter *.dll -ErrorAction SilentlyContinue | Format-Table Name,Length
           }
 
       - name: Run product
