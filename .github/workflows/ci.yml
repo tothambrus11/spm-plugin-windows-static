@@ -51,8 +51,8 @@ jobs:
         run: |
           $sdkParent = Split-Path -Path ${env:SDKROOT} -Parent
           if (-not $sdkParent) { $sdkParent = "$env:LOCALAPPDATA\Programs\Swift\Platforms\0.0.0\Windows.platform\Developer\SDKs" }
-          Write-Host "SDKROOT=$env:SDKROOT"
-          Write-Host "Listing $sdkParent:"
+          Write-Host ("SDKROOT={0}" -f $env:SDKROOT)
+          Write-Host ("Listing {0}" -f $sdkParent)
           Get-ChildItem $sdkParent | Format-Table Name,LastWriteTime
 
       - name: Build (dynamic)
