@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ${{ matrix.arch.label }} ${{ matrix.link }}
+    runs-on: ${{ matrix.arch.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - runner: windows-2025
+            triple: x86_64-unknown-windows-msvc
+            build_arch: amd64
+            label: x86_64
+          - runner: windows-11-arm
+            triple: aarch64-unknown-windows-msvc
+            build_arch: arm64
+            label: arm64
+        link: [dynamic, static]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Swift
+        uses: compnerd/gha-setup-swift@main
+        with:
+          swift-version: development
+          swift-build: DEVELOPMENT-SNAPSHOT-2026-04-30-a
+          build_arch: ${{ matrix.arch.build_arch }}
+          update-sdk-modules: true
+
+      - name: Repoint SDKROOT at WindowsExperimental.sdk (static only)
+        if: matrix.link == 'static'
+        shell: pwsh
+        run: |
+          $sdk = "$(Split-Path -Path ${env:SDKROOT} -Parent)/WindowsExperimental.sdk"
+          Write-Host "Redirecting SDKROOT -> $sdk"
+          "SDKROOT=$sdk" >> $env:GITHUB_ENV
+
+      - name: swift --version
+        shell: pwsh
+        run: swift --version
+
+      - name: Build (dynamic)
+        if: matrix.link == 'dynamic'
+        shell: pwsh
+        run: swift build --verbose --triple ${{ matrix.arch.triple }}
+
+      - name: Build (static-stdlib)
+        if: matrix.link == 'static'
+        shell: pwsh
+        run: |
+          swift build --verbose --triple ${{ matrix.arch.triple }} `
+            -Xswiftc -static-stdlib
+
+      - name: Run product
+        shell: pwsh
+        run: swift run --triple ${{ matrix.arch.triple }} plugintest
