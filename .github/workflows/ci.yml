@@ -46,18 +46,74 @@ jobs:
         shell: pwsh
         run: swift --version
 
+      - name: Show SDK directories
+        shell: pwsh
+        run: |
+          $sdkParent = Split-Path -Path ${env:SDKROOT} -Parent
+          if (-not $sdkParent) { $sdkParent = "$env:LOCALAPPDATA\Programs\Swift\Platforms\0.0.0\Windows.platform\Developer\SDKs" }
+          Write-Host "SDKROOT=$env:SDKROOT"
+          Write-Host "Listing $sdkParent:"
+          Get-ChildItem $sdkParent | Format-Table Name,LastWriteTime
+
       - name: Build (dynamic)
         if: matrix.link == 'dynamic'
         shell: pwsh
-        run: swift build --verbose --triple ${{ matrix.arch.triple }}
+        env:
+          SWIFTPM_ENABLE_PLUGIN_LOGGING: "1"
+          SWIFTPM_LOG_LEVEL: "debug"
+        run: swift build --very-verbose --triple ${{ matrix.arch.triple }}
 
       - name: Build (static-stdlib)
         if: matrix.link == 'static'
         shell: pwsh
+        env:
+          SWIFTPM_ENABLE_PLUGIN_LOGGING: "1"
+          SWIFTPM_LOG_LEVEL: "debug"
         run: |
-          swift build --verbose --triple ${{ matrix.arch.triple }} `
+          swift build --very-verbose --triple ${{ matrix.arch.triple }} `
             -Xswiftc -static-stdlib
 
+      - name: Inspect plugin executable after failure (static only)
+        if: failure() && matrix.link == 'static'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $exe = ".build\plugins\cache\BuildPlugin.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Host "Plugin executable not found at $exe; listing cache directory:"
+            Get-ChildItem .build\plugins\cache -Recurse -ErrorAction SilentlyContinue
+            exit 0
+          }
+          Write-Host "Plugin executable: $exe"
+          Get-Item $exe | Format-List Length,LastWriteTime,Mode
+
+          Write-Host "`n--- Direct invocation (expect protocol error on stdin) ---"
+          $p = Start-Process -FilePath $exe -NoNewWindow -PassThru `
+            -RedirectStandardOutput plugin.stdout.txt `
+            -RedirectStandardError plugin.stderr.txt
+          if (-not $p.WaitForExit(5000)) {
+            Write-Host "Plugin did not exit within 5s; killing"
+            $p.Kill()
+          }
+          Write-Host "ExitCode: $($p.ExitCode)"
+          Write-Host "`n--- stdout ---"
+          Get-Content plugin.stdout.txt -ErrorAction SilentlyContinue
+          Write-Host "`n--- stderr ---"
+          Get-Content plugin.stderr.txt -ErrorAction SilentlyContinue
+
+          Write-Host "`n--- dumpbin /dependents ---"
+          $dumpbin = Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+          if ($dumpbin) {
+            & $dumpbin.Source /dependents $exe
+          } else {
+            Write-Host "dumpbin not on PATH; trying llvm-readobj"
+            $readobj = "$env:LOCALAPPDATA\Programs\Swift\Toolchains\0.0.0+Asserts\usr\bin\llvm-readobj.exe"
+            if (Test-Path $readobj) {
+              & $readobj --coff-imports $exe
+            }
+          }
+
       - name: Run product
+        if: matrix.link == 'dynamic'
         shell: pwsh
         run: swift run --triple ${{ matrix.arch.triple }} plugintest
