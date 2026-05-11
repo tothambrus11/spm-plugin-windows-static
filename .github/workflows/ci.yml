@@ -71,7 +71,7 @@ jobs:
           SWIFTPM_LOG_LEVEL: "debug"
         run: |
           swift build --very-verbose --triple ${{ matrix.arch.triple }} `
-            -Xswiftc -static-stdlib
+            -Xswiftc -static-stdlib -debug-info-format none -Xswiftc -sdk -Xswiftc ${ExperimentalSDK}
 
       - name: Inspect plugin executable after failure (static only)
         if: failure() && matrix.link == 'static'
