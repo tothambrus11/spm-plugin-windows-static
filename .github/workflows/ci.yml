@@ -70,7 +70,7 @@ jobs:
           SWIFTPM_ENABLE_PLUGIN_LOGGING: "1"
           SWIFTPM_LOG_LEVEL: "debug"
         run: |
-          swift build -c release --very-verbose --triple ${{ matrix.arch.triple }} -Xswiftc -static-stdlib -debug-info-format none -Xswiftc -sdk -Xswiftc ${ExperimentalSDK}
+          swift build -c release --very-verbose --triple ${{ matrix.arch.triple }} -Xswiftc -static-stdlib -debug-info-format none -Xswiftc -sdk -Xswiftc ${env:SDKROOT}
 
       - name: Inspect plugin executable after failure (static only)
         if: failure() && matrix.link == 'static'
